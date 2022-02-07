@@ -49,6 +49,8 @@ Contributors names and contact info
   * Minor visual update
 * 2.0.1
   * Webpage updates
+* 3.0.0
+  * ESP8266 with OLED - Special Version
 
 ## Acknowledgments
 

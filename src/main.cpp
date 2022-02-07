@@ -51,6 +51,15 @@
 #include <Wire.h>
 #include "RTClib.h"
 
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128                    // OLED display width, in pixels
+#define SCREEN_HEIGHT 32                    // OLED display height, in pixels
+#define OLED_RESET    -1
+#define SCREEN_ADDRESS 0x3C
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
 #define BUF_SIZE   400                      // 400 out of 512 used
 #define PASS_BSIZE 40                       // 40 out of 512 used
 #define PASS_EXIST 450                      // password $ address
@@ -58,10 +67,10 @@
 #define P_CHAR     '`'
 #define BRT_BEGIN  505                      // Brightness value stored
 
-#define LED_BUILTIN 26
+//#define LED_BUILTIN 26
 #define LED_PIN     7                       // * for ESP32 use 27
 #define VOLTS       5
-#define MAX_MA      3000
+#define MAX_MA      400
 
 #define MATRIX_WIDTH  -32
 #define MATRIX_HEIGHT -8
@@ -107,6 +116,9 @@ char password[PASS_BSIZE] = "12345678";     // dont change password here, change
 
 uint16_t h = 0;
 uint16_t m = 0;
+uint16_t d = 0;
+uint16_t mnth = 0;
+uint16_t yr = 0;
 RTC_Millis RTC; //! RTC_DS3231 RTC;
 
 IPAddress ip(1, 2, 3, 4);
@@ -114,7 +126,8 @@ IPAddress subnet(255, 255, 255, 0);
 
 AsyncWebServer server(80);
 DateTime now;                               // Decalre global variable for time
-char szTime[6];                             // hh:mm\0
+char szTime[15];                             // hh:mm\0  "Time: %02d:%02d"
+char szDate[15];                             //          "Date: 01/01/22"
 char daysOfTheWeek[7][4] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
 
 char curMessage[BUF_SIZE] = "Vostro";
@@ -304,10 +317,9 @@ void setup()
   Serial.print("NeoMatrix Brightness set to ");                   // done in line 318
   Serial.println(BRIGHTNESS);
   
-  
   //  START DISPLAY
   Serial.println("\nNEOMATRIX DIPLAY STARTED");
-  //! FastLED.setMaxPowerInVoltsAndMilliamps(VOLTS, MAX_MA);
+  FastLED.setMaxPowerInVoltsAndMilliamps(VOLTS, MAX_MA);
   FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds[0], leds.Size()).setCorrection(TypicalLEDStrip); //TypicalSMD5050
   FastLED.setBrightness(BRIGHTNESS);
   FastLED.clear(true);
@@ -323,7 +335,7 @@ void setup()
   StaticgMsg.SetTextColrOptions(COLR_RGB | COLR_SINGLE, 0x00, 0x00, 0xff);
 
   //  RTC
-  Wire.begin();                             // DS3231 RTC I2C - SDA(21) and SCL(22)
+  Wire.begin(D1, D2);                             // DS3231 RTC I2C - SDA(21) and SCL(22) //! RTC  ??
   Serial.print("\nRTC STARTING >>> ");     
   RTC.begin(DateTime(F(__DATE__), F(__TIME__))); //! uncomment below dete this line
   /*                             
@@ -417,6 +429,13 @@ void setup()
 
 
   //Serial.println(TIMER_BASE_CLK);
+  // START OLED
+  Wire.begin(D1, D2);
+  if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;); // Don't proceed, loop forever
+  }
+  display.display();
 }
 
 void loop()
@@ -430,8 +449,11 @@ void loop()
     timeLast = millis();
 
     now = RTC.now();                          // Update the global var with current time 
-    m = now.minute();  
+    m = now.minute();
     h = now.hour();
+    d = now.day();
+    mnth = now.month();
+    yr = now.year();
 
     //txtDateA[7] = '2';// HRS//txtDateA[8] = '3';// HRS//txtDateA[10] = '5';// MIN//txtDateA[11] = '9';// MIN
     sprintf(txtDateA, "%c%c%c%c%c%c%c%02d%c%02d", EFF_HSV_AH,0x00,0xff,0xff,0xff,0xff,0xff,h,'|',m);
@@ -442,7 +464,7 @@ void loop()
                                     EFF_SCROLL_LEFT,"     ",h,':',m,EFF_DELAY_FRAMES,0x00,0x2c,EFF_CUSTOM_RC,0x02,
                                     EFF_RGB,0x00,0xc8,0x64,EFF_SCROLL_LEFT,"      ",t,'^',' ',EFF_DELAY_FRAMES,0x00,0xee,
                                     EFF_RGB,0xd3,0x54,0x00,EFF_SCROLL_LEFT,"      ",daysOfTheWeek[now.dayOfTheWeek()],' ',EFF_DELAY_FRAMES,0x00,0xee,
-                                    EFF_RGB,0x00,0x80,0x80,EFF_SCROLL_LEFT,"     ",now.day(),'-',now.month(),EFF_DELAY_FRAMES,0x00,0xee,
+                                    EFF_RGB,0x00,0x80,0x80,EFF_SCROLL_LEFT,"     ",d,'-',mnth,EFF_DELAY_FRAMES,0x00,0xee,
                                     EFF_SCROLL_LEFT,"     ",
                                     EFF_HSV_AH,0x00,0xff,0xff,0xff,0xff,0xff,EFF_SCROLL_LEFT,EFF_FRAME_RATE,0x02," ",curMessage,"     ",EFF_FRAME_RATE,0x00,
                                     EFF_CUSTOM_RC,0x01);
@@ -502,4 +524,17 @@ void loop()
     FastLED.show();
   }
   delay(10);
+  display.clearDisplay();
+
+  display.setTextSize(1);             // Normal 1:1 pixel scale
+  display.setTextColor(SSD1306_WHITE);        // Draw white text
+  display.setCursor(0,0);             // Start at top-left corner
+  display.println(ssid);
+  display.print("Pass: ");
+  display.println(password);
+  sprintf(szTime, "Time: %02d:%02d", h, m);
+  display.println(szTime);
+  sprintf(szDate, "Date: %02d/%02d/%02d", d, mnth, yr);
+  display.println(szDate);
+  display.display();
 }
